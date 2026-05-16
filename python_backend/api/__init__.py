@@ -2,6 +2,8 @@
 """
 Acadexa API Module
 """
-from .main import app
 
-__all__ = ["app"]
+# This package is intentionally left minimal.
+# The FastAPI app is defined in api.main and should be imported directly by ASGI servers.
+
+__all__ = []

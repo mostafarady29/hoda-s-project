@@ -1,0 +1,55 @@
+# ======================
+# ENV
+# ======================
+.env
+.env.*
+
+# ======================
+# PYTHON
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+
+# ======================
+# VENV
+# ======================
+venv/
+.venv/
+env/
+
+# ======================
+# IDE
+# ======================
+.vscode/
+.idea/
+
+# ======================
+# LOGS
+# ======================
+logs/*.log
+*.log
+
+# ======================
+# STORAGE (runtime only)
+# ======================
+storage/temp_uploads/*
+storage/output/*
+storage/jobs/*
+
+# keep structure
+!storage/temp_uploads/.gitkeep
+!storage/output/.gitkeep
+!storage/jobs/.gitkeep
+
+# ======================
+# SYSTEM
+# ======================
+.DS_Store
+Thumbs.db
+
+# ======================
+# CACHE / BUILD
+# ======================
+.cache/
+.pytest_cache/

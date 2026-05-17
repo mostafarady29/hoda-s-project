@@ -8,7 +8,7 @@ load_dotenv()
 
 
 class Config:
-    # Base paths
+    # ── Paths
     BASE_DIR = Path(__file__).parent
     STORAGE_DIR = BASE_DIR / "storage"
     TEMP_UPLOADS = STORAGE_DIR / "temp_uploads"
@@ -16,45 +16,37 @@ class Config:
     LOGS_DIR = BASE_DIR / "logs"
     JOBS_DIR = STORAGE_DIR / "jobs"
 
-    # Create directories
-    for dir_path in [TEMP_UPLOADS, OUTPUT_DIR, LOGS_DIR, JOBS_DIR]:
-        dir_path.mkdir(parents=True, exist_ok=True)
+    # Create all dirs on import
+    for _dir in [TEMP_UPLOADS, OUTPUT_DIR, LOGS_DIR, JOBS_DIR]:
+        _dir.mkdir(parents=True, exist_ok=True)
 
-    # Security
-    SECRET_KEY = os.getenv("SECRET_KEY", "acadexa-secret-key-change-in-production")
-    ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+    # ── Security
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "acadexa-secret-key-change-in-production")
 
-    # File settings
-    MAX_FILE_SIZE = 50 * 1024 * 1024
-    ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
+    # ── CORS
+    # على Railway/Flutter Web لازم نقبل كل الأصول
+    ALLOWED_ORIGINS: list = ["*"]
 
-    # Job settings
-    JOB_TIMEOUT = 600
-    MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", 5))
-    JOB_RETENTION_DAYS = 7
+    # ── File limits
+    MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", 50 * 1024 * 1024))   # 50 MB
+    ALLOWED_EXTENSIONS: set = {".xlsx", ".xls"}
 
-    # Rate limiting
-    RATE_LIMIT_REQUESTS = 10
-    RATE_LIMIT_PERIOD = 60
+    # ── Concurrency
+    MAX_CONCURRENT_JOBS: int = int(os.getenv("MAX_CONCURRENT_JOBS", 5))
 
-    # Logging
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    # ── Job retention
+    JOB_RETENTION_HOURS: int = int(os.getenv("RESULT_RETENTION_HOURS", 24))
+    JOB_RETENTION_DAYS: int = 7
 
-    # CORS
-    CORS_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:8080",
-        "http://localhost:5000",
-        "https://*.flutterweb.app",
-        "https://acadexa-api.onrender.com",
-        "https://acadexa-api.railway.app"
-    ]
+    # ── Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
-    # API
-    API_V1_PREFIX = "/api/v1"
+    # ── API
+    API_V1_PREFIX: str = "/api/v1"
 
-    # Result retention
-    RESULT_RETENTION_HOURS = int(os.getenv("RESULT_RETENTION_HOURS", 24))
+    # ── Server (Railway injects PORT automatically)
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", 8000))
 
-    # 🔥 JSON safety limit
-    MAX_JSON_SIZE = 5 * 1024 * 1024
+    # ── JSON safety limit
+    MAX_JSON_SIZE: int = 5 * 1024 * 1024   # 5 MB per response

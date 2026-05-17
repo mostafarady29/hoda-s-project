@@ -1,33 +1,41 @@
+# ===== File: python_backend/Dockerfile =====
+
 FROM python:3.11-slim
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
+# Install Python deps first (layer cache)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy source
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p storage/temp_uploads storage/output logs storage/jobs
+# Create storage dirs
+RUN mkdir -p \
+    storage/temp_uploads \
+    storage/output \
+    storage/jobs \
+    logs
 
-# Set environment variables
-ENV ENVIRONMENT=production
+# Railway sets PORT, default 8000
 ENV HOST=0.0.0.0
 ENV PORT=8000
+ENV ENVIRONMENT=production
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
-# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+# Health check (curl instead of python requests — lighter)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Run the application
+# Railway uses this CMD
 CMD ["python", "run.py"]

@@ -30,17 +30,49 @@ class DependencyInjection {
     await HiveStorageService.instance.init();
     sl.registerSingleton<HiveStorageService>(HiveStorageService.instance);
 
-    // ── Dio (HTTP client) - ✅ زيادة الـ Timeouts للملفات الكبيرة
-    sl.registerLazySingleton<Dio>(() => Dio(
-          BaseOptions(
-            baseUrl: ApiEndpoints.baseUrl,
-            connectTimeout: const Duration(minutes: 5), // ✅ 15s → 5 دقائق
-            receiveTimeout: const Duration(minutes: 10), // ✅ 60s → 10 دقائق
-            sendTimeout: const Duration(minutes: 10), // ✅ 120s → 10 دقائق
-          ),
-        ));
+    // ── Dio (HTTP client) - ✅ مع Interceptor
+    sl.registerLazySingleton<Dio>(() {
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: ApiEndpoints.baseUrl,
+          connectTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 10),
+          sendTimeout: const Duration(minutes: 10),
+        ),
+      );
 
-    // ── Remote data sources
+      // ✅ ✅ ✅ Interceptor عشان نشوف الخطأ
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            print('🚀 REQUEST: ${options.method} ${options.uri}');
+            print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            return handler.next(options);
+          },
+          onResponse: (response, handler) {
+            print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            print('✅ RESPONSE: ${response.statusCode}');
+            print('📦 DATA: ${response.data}');
+            print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            return handler.next(response);
+          },
+          onError: (error, handler) {
+            print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            print('❌ ERROR: ${error.type}');
+            print('📝 MESSAGE: ${error.message}');
+            print('🔢 STATUS: ${error.response?.statusCode}');
+            print('📄 RESPONSE: ${error.response?.data}');
+            print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            return handler.next(error);
+          },
+        ),
+      );
+
+      return dio;
+    });
+
+    // ── Remote data sources (باقي الكود زي ما هو)
     sl.registerLazySingleton<UploadRemoteDataSource>(
         () => UploadRemoteDataSourceImpl(dio: sl()));
 
@@ -50,10 +82,8 @@ class DependencyInjection {
     sl.registerLazySingleton<StudentRemoteDataSource>(
         () => StudentRemoteDataSourceImpl(dio: sl()));
 
-    // ── Mapper
     sl.registerLazySingleton<ImportMapper>(() => const ImportMapper());
 
-    // ── Repositories
     sl.registerLazySingleton<UploadRepository>(
       () => UploadRepositoryImpl(
         uploadDataSource: sl(),
@@ -70,13 +100,11 @@ class DependencyInjection {
       ),
     );
 
-    // ── Use cases
     sl.registerLazySingleton(() => UploadExcelUseCase(repository: sl()));
     sl.registerLazySingleton(() => GetJobStatusUseCase(repository: sl()));
     sl.registerLazySingleton(() => GetStudentsIndexUseCase(repository: sl()));
     sl.registerLazySingleton(() => GetStudentDetailUseCase(repository: sl()));
 
-    // ── Cubits (factory → new instance per screen)
     sl.registerFactory(
       () => UploadCubit(
         uploadExcel: sl(),

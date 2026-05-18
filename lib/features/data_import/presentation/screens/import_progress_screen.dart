@@ -1,309 +1,230 @@
-// ===== File: lib/features/data_import/presentation/screens/import_progress_screen.dart =====
+// lib/features/data_import/presentation/screens/import_progress_screen.dart
 
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../data/models/import_status_model.dart';
+import '../../../../core/themes/app_colors.dart';
+import '../../../../core/themes/app_shadows.dart';
+import '../../../../core/themes/app_text_styles.dart';
+import '../../../../data/models/student_index_model.dart';
+import '../../../../core/themes/app_theme.dart';
+import '../cubit/upload_cubit.dart';
 
-enum ProgressStep { uploading, processing, done, failed }
-
-class ImportProgressScreen extends StatefulWidget {
-  /// Stream بيبعث [ImportStatusModel] أو null (uploading phase).
-  /// لما يبعت status.isDone نروح لشاشة النتيجة.
-  final Stream<ImportStatusModel?> statusStream;
-
-  /// job_id للعرض
-  final String? jobId;
-
-  /// يُستدعى لما تكتمل المعالجة
-  final void Function(String jobId) onCompleted;
-
-  /// يُستدعى لما تفشل
-  final void Function(String error) onFailed;
-
-  /// يُستدعى لو الجيوزر ألغى
+class ImportProgressScreen extends StatelessWidget {
+  final void Function(String jobId, StudentIndexModel index) onCompleted;
   final VoidCallback onCancelled;
 
   const ImportProgressScreen({
     super.key,
-    required this.statusStream,
-    this.jobId,
     required this.onCompleted,
-    required this.onFailed,
     required this.onCancelled,
   });
 
   @override
-  State<ImportProgressScreen> createState() => _ImportProgressScreenState();
-}
-
-class _ImportProgressScreenState extends State<ImportProgressScreen>
-    with SingleTickerProviderStateMixin {
-  ProgressStep _step = ProgressStep.uploading;
-  ImportStatusModel? _latestStatus;
-  String _message = 'جاري رفع الملف...';
-  String? _errorMessage;
-
-  late StreamSubscription<ImportStatusModel?> _sub;
-  late AnimationController _pulseController;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-
-    _sub = widget.statusStream.listen(
-      _onStatus,
-      onError: (e) {
-        if (!mounted) return;
-        setState(() {
-          _step = ProgressStep.failed;
-          _errorMessage = e.toString();
-          _message = 'حدث خطأ غير متوقع';
-        });
-        widget.onFailed(e.toString());
+  Widget build(BuildContext context) {
+    return BlocConsumer<UploadCubit, UploadState>(
+      listener: (context, state) {
+        if (state is UploadCompleted) {
+          onCompleted(state.jobId, state.index);
+        }
+      },
+      builder: (context, state) {
+        final isDark = AppTheme.isDarkMode(context);
+        return Scaffold(
+          backgroundColor:
+              isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+          body: SafeArea(
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: _ProgressBody(
+                state: state,
+                onCancelled: onCancelled,
+                isDark: isDark,
+              ),
+            ),
+          ),
+        );
       },
     );
   }
+}
 
-  void _onStatus(ImportStatusModel? status) {
-    if (!mounted) return;
+class _ProgressBody extends StatelessWidget {
+  final UploadState state;
+  final VoidCallback onCancelled;
+  final bool isDark;
 
-    if (status == null) {
-      setState(() {
-        _step = ProgressStep.uploading;
-        _message = 'جاري رفع الملف...';
-      });
-      return;
-    }
+  const _ProgressBody({
+    required this.state,
+    required this.onCancelled,
+    required this.isDark,
+  });
 
-    setState(() => _latestStatus = status);
-
-    if (status.isDone) {
-      setState(() {
-        _step = ProgressStep.done;
-        _message = status.isPartialSuccess
-            ? 'اكتملت المعالجة مع بعض التحذيرات'
-            : 'اكتملت المعالجة بنجاح ✓';
-      });
-      _pulseController.stop();
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (mounted) widget.onCompleted(status.jobId);
-      });
-      return;
-    }
-
-    if (status.isFailed) {
-      setState(() {
-        _step = ProgressStep.failed;
-        _errorMessage = status.errorLog.isNotEmpty
-            ? status.errorLog.join('\n')
-            : 'فشلت المعالجة';
-        _message = 'فشلت المعالجة';
-      });
-      _pulseController.stop();
-      widget.onFailed(_errorMessage!);
-      return;
-    }
-
-    setState(() {
-      _step = ProgressStep.processing;
-      _message = _labelFor(status.status);
-    });
-  }
-
-  String _labelFor(String status) {
-    switch (status) {
-      case 'pending':
-        return 'في انتظار المعالجة...';
-      case 'processing':
-        return 'جاري قراءة وتحليل بيانات الطلاب...';
-      default:
-        return 'جاري المعالجة...';
-    }
-  }
-
-  @override
-  void dispose() {
-    _sub.cancel();
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  // ─────────────────────────────────────────────
-  // UI
-  // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      backgroundColor: colors.surface,
-      appBar: AppBar(
-        title: const Text('معالجة الملف'),
-        centerTitle: true,
-        backgroundColor: colors.surface,
-        elevation: 0,
-        leading: _step == ProgressStep.failed
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: widget.onCancelled,
-              )
-            : null,
-        automaticallyImplyLeading: false,
-      ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // ── Animated icon
-                _StepIcon(step: _step, pulse: _pulseController),
-                const SizedBox(height: 32),
-
-                // ── Message
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  child: Text(
-                    _message,
-                    key: ValueKey(_message),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: _step == ProgressStep.failed
-                              ? colors.error
-                              : colors.onSurface,
-                        ),
-                    textAlign: TextAlign.center,
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppTheme.spacingXL),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _AnimatedStatusIcon(state: state),
+            const SizedBox(height: AppTheme.spacingXL),
+            _StatusTitle(state: state, isDark: isDark),
+            const SizedBox(height: AppTheme.spacingSM),
+            _StatusSubtitle(state: state, isDark: isDark),
+            const SizedBox(height: AppTheme.spacingXXL),
+            _StepsIndicator(state: state),
+            const SizedBox(height: AppTheme.spacingXXL),
+            if (state is UploadCompleted)
+              _StatsCard(
+                index: (state as UploadCompleted).index,
+                isDark: isDark,
+              ),
+            if (state is UploadFailure)
+              _ErrorCard(
+                message: (state as UploadFailure).message,
+                onRetry: onCancelled,
+                isDark: isDark,
+              ),
+            if (state is UploadInProgress || state is UploadPolling) ...[
+              const SizedBox(height: AppTheme.spacingLG),
+              TextButton.icon(
+                onPressed: () => _confirmCancel(context),
+                icon: const Icon(Icons.cancel_outlined, size: 18),
+                label: Text(
+                  'إلغاء',
+                  style: AppTextStyles.labelMedium.copyWith(
+                    color: isDark
+                        ? AppColors.textTertiaryDark
+                        : AppColors.textTertiaryLight,
                   ),
                 ),
-                const SizedBox(height: 12),
-
-                // ── job ID
-                if (widget.jobId != null || _latestStatus != null)
-                  Text(
-                    'Job ID: ${_latestStatus?.jobId ?? widget.jobId}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                          fontFamily: 'monospace',
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
-                const SizedBox(height: 32),
-
-                // ── Progress steps
-                _StepsIndicator(current: _step),
-                const SizedBox(height: 36),
-
-                // ── Stats (if processing/done)
-                if (_latestStatus?.stats.totalStudents != null &&
-                    _latestStatus!.stats.totalStudents > 0)
-                  _StatsRow(stats: _latestStatus!.stats),
-
-                // ── Error details
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  _ErrorDetails(
-                      error: _errorMessage!, onRetry: widget.onCancelled),
-                ],
-
-                // ── Cancel button (only while active)
-                if (_step == ProgressStep.uploading ||
-                    _step == ProgressStep.processing) ...[
-                  const SizedBox(height: 24),
-                  TextButton.icon(
-                    onPressed: () => _showCancelDialog(context),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('إلغاء'),
-                    style: TextButton.styleFrom(foregroundColor: colors.error),
-                  ),
-                ],
-              ],
-            ),
-          ),
+              ),
+            ],
+          ],
         ),
       ),
     );
   }
 
-  Future<void> _showCancelDialog(BuildContext context) async {
+  Future<void> _confirmCancel(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('إلغاء المعالجة؟'),
-        content: const Text(
-            'هل تريد إلغاء عملية الرفع والمعالجة؟ لن يُحفظ أي تقدم.'),
+        content: const Text('هل تريد إلغاء عملية الرفع والمعالجة الحالية؟'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('استمرار')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('إلغاء')),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.errorMain),
+            child: const Text('إلغاء'),
+          ),
         ],
       ),
     );
-    if (confirm == true && mounted) widget.onCancelled();
+    if (confirm == true) onCancelled();
   }
 }
 
 // ─────────────────────────────────────────────
-// Sub-widgets
+// Animated icon
 // ─────────────────────────────────────────────
+class _AnimatedStatusIcon extends StatefulWidget {
+  final UploadState state;
+  const _AnimatedStatusIcon({required this.state});
 
-class _StepIcon extends StatelessWidget {
-  final ProgressStep step;
-  final AnimationController pulse;
-  const _StepIcon({required this.step, required this.pulse});
+  @override
+  State<_AnimatedStatusIcon> createState() => _AnimatedStatusIconState();
+}
+
+class _AnimatedStatusIconState extends State<_AnimatedStatusIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulse = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final isDone = widget.state is UploadCompleted;
+    final isFailed = widget.state is UploadFailure;
 
-    if (step == ProgressStep.done) {
+    if (isDone) {
       return Container(
-        width: 96,
-        height: 96,
+        width: 100,
+        height: 100,
         decoration: BoxDecoration(
+          color: AppColors.successBg,
           shape: BoxShape.circle,
-          color: colors.primaryContainer,
+          boxShadow: AppShadows.academicCard,
         ),
-        child: Icon(Icons.check_rounded, size: 52, color: colors.primary),
+        child: const Icon(Icons.check_rounded,
+            color: AppColors.successMain, size: 52),
       );
     }
 
-    if (step == ProgressStep.failed) {
+    if (isFailed) {
       return Container(
-        width: 96,
-        height: 96,
+        width: 100,
+        height: 100,
         decoration: BoxDecoration(
+          color: AppColors.errorBg,
           shape: BoxShape.circle,
-          color: colors.errorContainer,
+          boxShadow: AppShadows.soft,
         ),
-        child: Icon(Icons.error_outline_rounded, size: 52, color: colors.error),
+        child: const Icon(Icons.error_outline_rounded,
+            color: AppColors.errorMain, size: 52),
       );
     }
 
     return AnimatedBuilder(
-      animation: pulse,
+      animation: _pulse,
       builder: (_, __) => Container(
-        width: 96,
-        height: 96,
+        width: 100,
+        height: 100,
         decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.primaryMain
+                  .withValues(alpha: 0.2 + _pulse.value * 0.15),
+              AppColors.tealHighlight
+                  .withValues(alpha: 0.1 + _pulse.value * 0.1),
+            ],
+          ),
           shape: BoxShape.circle,
-          color: colors.primaryContainer.withOpacity(0.5 + pulse.value * 0.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryMain
+                  .withValues(alpha: 0.2 + _pulse.value * 0.15),
+              blurRadius: 20 + _pulse.value * 10,
+              spreadRadius: 2,
+            ),
+          ],
         ),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: CircularProgressIndicator(
             strokeWidth: 3,
-            color: colors.primary,
+            color: AppColors.primaryMain,
+            backgroundColor: AppColors.primarySoft.withValues(alpha: 0.3),
           ),
         ),
       ),
@@ -311,154 +232,315 @@ class _StepIcon extends StatelessWidget {
   }
 }
 
-class _StepsIndicator extends StatelessWidget {
-  final ProgressStep current;
-  const _StepsIndicator({required this.current});
+// ─────────────────────────────────────────────
+// Title
+// ─────────────────────────────────────────────
+class _StatusTitle extends StatelessWidget {
+  final UploadState state;
+  final bool isDark;
+  const _StatusTitle({required this.state, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
-    final steps = [
-      (ProgressStep.uploading, Icons.cloud_upload_rounded, 'رفع الملف'),
-      (ProgressStep.processing, Icons.memory_rounded, 'معالجة البيانات'),
-      (ProgressStep.done, Icons.task_alt_rounded, 'اكتمل'),
-    ];
+    String title;
+    Color color =
+        isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight;
 
-    final colors = Theme.of(context).colorScheme;
+    if (state is UploadInProgress) {
+      title = 'جاري رفع الملف...';
+    } else if (state is UploadPolling) {
+      final s = state as UploadPolling;
+      title = s.status.statusLabel;
+    } else if (state is UploadCompleted) {
+      final s = state as UploadCompleted;
+      title = s.index.status == 'partial_success'
+          ? 'اكتملت مع تحذيرات'
+          : 'اكتملت بنجاح ✓';
+      color = AppColors.successMain;
+    } else if (state is UploadFailure) {
+      title = 'فشلت المعالجة';
+      color = AppColors.errorMain;
+    } else {
+      title = 'في الانتظار...';
+    }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: steps.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final step = entry.value;
-        final isPast = current.index > step.$1.index;
-        final isCurrent = current == step.$1;
-        final isFailed =
-            current == ProgressStep.failed && step.$1 == ProgressStep.done;
-
-        Color iconColor;
-        Color bgColor;
-        if (isFailed && isCurrent) {
-          iconColor = colors.onErrorContainer;
-          bgColor = colors.errorContainer;
-        } else if (isPast || isCurrent) {
-          iconColor = colors.onPrimary;
-          bgColor = colors.primary;
-        } else {
-          iconColor = colors.onSurfaceVariant;
-          bgColor = colors.surfaceVariant;
-        }
-
-        return Row(
-          children: [
-            Column(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration:
-                      BoxDecoration(shape: BoxShape.circle, color: bgColor),
-                  child: Icon(step.$2, size: 20, color: iconColor),
-                ),
-                const SizedBox(height: 6),
-                Text(step.$3,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: isCurrent || isPast
-                              ? colors.primary
-                              : colors.onSurfaceVariant,
-                          fontWeight:
-                              isCurrent ? FontWeight.bold : FontWeight.normal,
-                        )),
-              ],
-            ),
-            if (idx < steps.length - 1)
-              Container(
-                  width: 40,
-                  height: 2,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  color: isPast ? colors.primary : colors.surfaceVariant),
-          ],
-        );
-      }).toList(),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      child: Text(
+        title,
+        key: ValueKey(title),
+        style: AppTextStyles.headlineSmall
+            .copyWith(color: color, fontWeight: FontWeight.w700),
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }
 
-class _StatsRow extends StatelessWidget {
-  final ImportStatsModel stats;
-  const _StatsRow({required this.stats});
+// ─────────────────────────────────────────────
+// Subtitle / job ID
+// ─────────────────────────────────────────────
+class _StatusSubtitle extends StatelessWidget {
+  final UploadState state;
+  final bool isDark;
+  const _StatusSubtitle({required this.state, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    String? jobId;
+    String? subtitle;
+
+    if (state is UploadPolling) {
+      jobId = (state as UploadPolling).jobId;
+      subtitle = 'جاري قراءة وتحليل بيانات الطلاب...';
+    } else if (state is UploadCompleted) {
+      jobId = (state as UploadCompleted).jobId;
+    }
+
+    if (jobId == null && subtitle == null) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        if (subtitle != null)
+          Text(
+            subtitle,
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: isDark
+                  ? AppColors.textSecondaryDark
+                  : AppColors.textSecondaryLight,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        if (jobId != null) ...[
+          const SizedBox(height: AppTheme.spacingXS),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppTheme.spacingSM, vertical: AppTheme.spacingXS),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.surfaceVariantDark
+                  : AppColors.surfaceVariantLight,
+              borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+            ),
+            child: Text(
+              'Job: ${jobId.substring(0, 8)}...',
+              style: AppTextStyles.captionMedium.copyWith(
+                fontFamily: 'monospace',
+                color: isDark
+                    ? AppColors.textTertiaryDark
+                    : AppColors.textTertiaryLight,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Steps indicator
+// ─────────────────────────────────────────────
+class _StepsIndicator extends StatelessWidget {
+  final UploadState state;
+  const _StepsIndicator({required this.state});
+
+  int get _currentStep {
+    if (state is UploadInProgress) return 0;
+    if (state is UploadPolling) return 1;
+    if (state is UploadCompleted || state is UploadFailure) return 2;
+    return 0;
+  }
+
+  bool get _isFailed => state is UploadFailure;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = [
+      (Icons.cloud_upload_rounded, 'رفع الملف'),
+      (Icons.memory_rounded, 'معالجة'),
+      (Icons.task_alt_rounded, 'اكتمل'),
+    ];
+    final current = _currentStep;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(steps.length * 2 - 1, (i) {
+        if (i.isOdd) {
+          final stepIndex = i ~/ 2;
+          final isPast = current > stepIndex;
+          return Container(
+            width: 48,
+            height: 2,
+            margin: const EdgeInsets.only(bottom: 28),
+            decoration: BoxDecoration(
+              gradient: isPast ? AppColors.heroGradient : null,
+              color: isPast ? null : AppColors.borderLight,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          );
+        }
+
+        final stepIndex = i ~/ 2;
+        final isPast = current > stepIndex;
+        final isCurrent = current == stepIndex;
+        final isFailedStep = _isFailed && stepIndex == 2;
+
+        Color bgColor;
+        Color iconColor;
+        if (isFailedStep) {
+          bgColor = AppColors.errorBg;
+          iconColor = AppColors.errorMain;
+        } else if (isPast || isCurrent) {
+          bgColor = AppColors.primaryMain;
+          iconColor = Colors.white;
+        } else {
+          bgColor = AppColors.surfaceVariantLight;
+          iconColor = AppColors.textTertiaryLight;
+        }
+
+        return Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: bgColor,
+                shape: BoxShape.circle,
+                boxShadow: isCurrent && !_isFailed ? AppShadows.kpiCard : [],
+              ),
+              child: Icon(steps[stepIndex].$1, color: iconColor, size: 20),
+            ),
+            const SizedBox(height: AppTheme.spacingXS),
+            Text(
+              steps[stepIndex].$2,
+              style: AppTextStyles.labelSmall.copyWith(
+                color: isPast || isCurrent
+                    ? AppColors.primaryMain
+                    : AppColors.textTertiaryLight,
+                fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Stats card (on success)
+// ─────────────────────────────────────────────
+class _StatsCard extends StatelessWidget {
+  final StudentIndexModel index;
+  final bool isDark;
+  const _StatsCard({required this.index, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      margin: const EdgeInsets.only(bottom: AppTheme.spacingMD),
+      padding: const EdgeInsets.all(AppTheme.spacingLG),
       decoration: BoxDecoration(
-        color: colors.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
+        gradient: AppColors.glassGradient,
+        borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+        border: Border.all(color: AppColors.successMain.withValues(alpha: 0.2)),
+        boxShadow: AppShadows.academicCard,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _StatChip('الإجمالي', stats.totalStudents.toString(), colors.primary),
-          _StatChip('ناجح', stats.successful.toString(), Colors.green),
-          _StatChip('فشل', stats.failed.toString(), colors.error),
+          _StatItem(
+              value: '${index.totalStudents}',
+              label: 'إجمالي الطلاب',
+              color: AppColors.primaryMain),
+          const _Divider(),
+          _StatItem(
+              value: '${index.students.length}',
+              label: 'تمت قراءتهم',
+              color: AppColors.successMain),
+          if (index.errors.isNotEmpty) ...[
+            const _Divider(),
+            _StatItem(
+                value: '${index.errors.length}',
+                label: 'تحذيرات',
+                color: AppColors.warningMain),
+          ],
         ],
       ),
     );
   }
 }
 
-class _StatChip extends StatelessWidget {
-  final String label;
+class _StatItem extends StatelessWidget {
   final String value;
+  final String label;
   final Color color;
-  const _StatChip(this.label, this.value, this.color);
+  const _StatItem(
+      {required this.value, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Text(value,
-            style: TextStyle(
-                fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+            style: AppTextStyles.headlineMedium
+                .copyWith(color: color, fontWeight: FontWeight.w700)),
         const SizedBox(height: 2),
-        Text(label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                )),
+        Text(label, style: AppTextStyles.captionMedium),
       ],
     );
   }
 }
 
-class _ErrorDetails extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-  const _ErrorDetails({required this.error, required this.onRetry});
+class _Divider extends StatelessWidget {
+  const _Divider();
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    return Container(width: 1, height: 40, color: AppColors.borderLight);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Error card
+// ─────────────────────────────────────────────
+class _ErrorCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  final bool isDark;
+  const _ErrorCard(
+      {required this.message, required this.onRetry, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: AppTheme.spacingMD),
+      padding: const EdgeInsets.all(AppTheme.spacingMD),
       decoration: BoxDecoration(
-        color: colors.errorContainer,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.errorBg,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        border: Border.all(color: AppColors.errorMain.withValues(alpha: 0.3)),
+        boxShadow: AppShadows.soft,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            error,
-            style: TextStyle(color: colors.onErrorContainer),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
+          Text(message,
+              style:
+                  AppTextStyles.bodySmall.copyWith(color: AppColors.errorDark),
+              textAlign: TextAlign.center),
+          const SizedBox(height: AppTheme.spacingMD),
           OutlinedButton.icon(
             onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.errorMain,
+              side: const BorderSide(color: AppColors.errorMain),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMD)),
+            ),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
             label: const Text('حاول مجدداً'),
-            style: OutlinedButton.styleFrom(foregroundColor: colors.error),
           ),
         ],
       ),

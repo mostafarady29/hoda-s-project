@@ -41,8 +41,9 @@ class UploadRemoteDataSourceImpl implements UploadRemoteDataSource {
   }
 
   Future<UploadResponseModel> _upload(FormData formData) async {
+    // ✅ ✅ ✅ التعديل هنا: /api/v1/upload بدل /upload
     final response = await _dio.post(
-      '/upload',
+      '/api/v1/upload', // 👈 غيري ده
       data: formData,
       options: Options(
         headers: {'Content-Type': 'multipart/form-data'},

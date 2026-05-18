@@ -6,11 +6,13 @@ class ApiEndpoints {
   ApiEndpoints._();
 
   // ── Base URL
-  // Development  → http://10.0.2.2:8000  (Android emulator → localhost)
-  // Development  → http://localhost:8000  (Web / iOS simulator)
-  // Production   → رابط Railway
-  static const String _baseUrl = String.fromEnvironment('API_BASE_URL',
-      defaultValue: 'http://10.0.2.2:8000');
+  // Development   → http://10.0.2.2:8000  (Android emulator → localhost)
+  // Development   → http://localhost:8000  (Web / iOS simulator)
+  // Production    → https://acadexa-production.up.railway.app
+  static const String _baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://acadexa-production.up.railway.app',
+  );
 
   static String get baseUrl => _baseUrl;
 

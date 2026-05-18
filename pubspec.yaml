@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_localizations:
+    sdk: flutter
+
   cupertino_icons: ^1.0.8
 
   # Networking
@@ -24,7 +27,7 @@ dependencies:
   # File picking
   file_picker: ^8.0.0+1
 
-  # State management (لو مستخدم)
+  # State management
   provider: ^6.1.2
 
   # Path
@@ -35,8 +38,9 @@ dependencies:
 
   # Utilities
   equatable: ^2.0.5
-  intl: ^0.19.0
-  #User interface
+  intl: ^0.20.2              # ✅ غيري من 0.19.0 إلى 0.20.2
+  
+  # User interface
   google_fonts: ^6.2.1 
 
 dev_dependencies:
@@ -50,3 +54,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/fonts/

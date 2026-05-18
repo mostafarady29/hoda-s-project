@@ -1,25 +1,31 @@
-// ===== File: lib/features/data_import/presentation/screens/import_excel_screen.dart =====
+// lib/features/data_import/presentation/screens/import_excel_screen.dart
 
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../cubit/upload_cubit.dart';
-import '../../../../data/models/import_status_model.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-// ── Department options
+import '../../../../core/themes/app_colors.dart';
+import '../../../../core/themes/app_shadows.dart';
+import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/themes/app_theme.dart';
+import '../cubit/upload_cubit.dart';
+import 'import_result_screen.dart'; // ✅ أضيفي هذا الاستيراد
+
 const List<Map<String, String>> kDepartments = [
-  {'id': 'fine_arts', 'label': 'قسم التربية الفنية'},
-  {'id': 'music', 'label': 'قسم التربية الموسيقية'},
-  {'id': 'media', 'label': 'قسم الإعلام التربوي'},
-  {'id': 'home_economics', 'label': 'قسم الاقتصاد المنزلي'},
-  {'id': 'edu_tech', 'label': 'قسم تكنولوجيا التعليم والحاسب الآلي'},
-  {'id': 'cs_english', 'label': 'برنامج إعداد معلم الحاسب الآلي (إنجليزي)'},
-  {'id': 'digital_arts', 'label': 'برنامج إعداد معلم التربية الفنية الرقمية'},
+  {'id': 'fine_arts', 'label': 'التربية الفنية'},
+  {'id': 'music', 'label': 'التربية الموسيقية'},
+  {'id': 'media', 'label': 'الإعلام التربوي'},
+  {'id': 'home_economics', 'label': 'الاقتصاد المنزلي'},
+  {'id': 'edu_tech', 'label': 'تكنولوجيا التعليم والحاسب الآلي'},
+  {'id': 'cs_english', 'label': 'إعداد معلم الحاسب الآلي (إنجليزي)'},
+  {'id': 'digital_arts', 'label': 'إعداد معلم التربية الفنية الرقمية'},
 ];
 
 class ImportExcelScreen extends StatefulWidget {
-  final String? initialDepartment;
-
-  const ImportExcelScreen({super.key, this.initialDepartment});
+  const ImportExcelScreen({super.key});
 
   @override
   State<ImportExcelScreen> createState() => _ImportExcelScreenState();
@@ -27,243 +33,282 @@ class ImportExcelScreen extends StatefulWidget {
 
 class _ImportExcelScreenState extends State<ImportExcelScreen>
     with SingleTickerProviderStateMixin {
-  String? _selectedDepartmentId;
+  File? _pickedFile;
+  String? _selectedDeptId;
   String? _errorMessage;
 
-  late AnimationController _animController;
-  late Animation<double> _fadeAnim;
+  late final AnimationController _animCtrl;
+  late final Animation<double> _fadeAnim;
+  late final Animation<Offset> _slideAnim;
 
   @override
   void initState() {
     super.initState();
-    _selectedDepartmentId = widget.initialDepartment;
-    _animController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
-    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
-    _animController.forward();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+    _animCtrl.forward();
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    _animCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _startUpload() async {
-    if (_selectedDepartmentId == null) {
-      setState(() => _errorMessage = 'اختر القسم أولاً');
+  Future<void> _pickFile() async {
+    setState(() => _errorMessage = null);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final path = result.files.single.path;
+      if (path == null) return;
+      final file = File(path);
+      final sizeBytes = await file.length();
+      if (sizeBytes > 50 * 1024 * 1024) {
+        setState(() => _errorMessage = 'حجم الملف يتجاوز الحد الأقصى (50 MB)');
+        return;
+      }
+      setState(() => _pickedFile = file);
+    } catch (_) {
+      setState(() => _errorMessage = 'فشل اختيار الملف');
+    }
+  }
+
+  void _submit() {
+    if (_pickedFile == null) {
+      setState(() => _errorMessage = 'يرجى اختيار ملف Excel أولاً');
       return;
     }
-
+    if (_selectedDeptId == null) {
+      setState(() => _errorMessage = 'يرجى اختيار القسم أو البرنامج');
+      return;
+    }
     setState(() => _errorMessage = null);
-    await context.read<UploadCubit>().pickAndUpload(_selectedDepartmentId!);
+    context.read<UploadCubit>().upload(_pickedFile!, _selectedDeptId!);
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
+    final isDark = AppTheme.isDarkMode(context);
+    final isWide =
+        MediaQuery.of(context).size.width >= AppTheme.tabletBreakpoint;
 
-    return Scaffold(
-      backgroundColor: colors.surface,
-      appBar: AppBar(
-        title: const Text('استيراد السجل الأكاديمي'),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: colors.surface,
-      ),
-      body: BlocListener<UploadCubit, UploadState>(
-        listener: (context, state) {
-          if (state is UploadFailure) {
-            setState(() => _errorMessage = state.message);
-          }
-          if (state is UploadCompleted) {
-            Navigator.pushReplacementNamed(
-              context,
-              '/import_result',
-              arguments: {
-                'jobId': state.jobId,
-                'index': state.index,
-              },
-            );
-          }
-        },
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _HeaderCard(colors: colors),
-                  const SizedBox(height: 28),
-
-                  Text('اختر القسم أو البرنامج',
-                      style: text.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  _DepartmentDropdown(
-                    selectedDepartment: _selectedDepartmentId,
-                    onChanged: (val) =>
-                        setState(() => _selectedDepartmentId = val),
-                  ),
-                  const SizedBox(height: 28),
-
-                  if (_errorMessage != null)
-                    _ErrorBanner(message: _errorMessage!),
-
-                  BlocBuilder<UploadCubit, UploadState>(
-                    builder: (context, state) {
-                      final isLoading =
-                          state is UploadInProgress || state is UploadPolling;
-                      return _SubmitButton(
-                        isLoading: isLoading,
-                        isEnabled: _selectedDepartmentId != null && !isLoading,
-                        onPressed: _startUpload,
-                        colors: colors,
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 32),
-
-                  // ✅ شاشة التقدم مع وقت الانتظار
-                  BlocBuilder<UploadCubit, UploadState>(
-                    builder: (context, state) {
-                      if (state is UploadPolling) {
-                        final status = state.status;
-                        final waitingSeconds = state.waitingTimeSeconds;
-
-                        // ✅ حساب وقت الانتظار بالدقائق والثواني
-                        final waitingMinutes = waitingSeconds ~/ 60;
-                        final waitingSecondsRemainder = waitingSeconds % 60;
-                        String waitingTimeText = '';
-                        if (waitingMinutes > 0) {
-                          waitingTimeText = 'انتظرت $waitingMinutes دقيقة';
-                          if (waitingSecondsRemainder > 0) {
-                            waitingTimeText +=
-                                ' و $waitingSecondsRemainder ثانية';
-                          }
-                        } else if (waitingSeconds > 0) {
-                          waitingTimeText = 'انتظرت $waitingSeconds ثانية';
-                        }
-
-                        // ✅ حساب نسبة التقدم
-                        int progressPercent = 0;
-                        if (status.stats.totalStudents > 0) {
-                          progressPercent =
-                              ((status.stats.successful + status.stats.failed) /
-                                      status.stats.totalStudents *
-                                      100)
-                                  .toInt();
-                          progressPercent = progressPercent.clamp(0, 100);
-                        } else if (status.isProcessing) {
-                          progressPercent = 50;
-                        } else if (status.isCompleted ||
-                            status.isPartialSuccess) {
-                          progressPercent = 100;
-                        }
-
-                        // ✅ رسالة الحالة
-                        String statusMessage;
-                        if (status.isCompleted) {
-                          statusMessage =
-                              '✅ تم استيراد ${status.stats.successful} طالب بنجاح';
-                          if (status.stats.failed > 0) {
-                            statusMessage += ' (${status.stats.failed} فشل)';
-                          }
-                        } else if (status.isPartialSuccess) {
-                          statusMessage =
-                              '⚠️ تم الاستيراد مع تحذيرات: نجح ${status.stats.successful}، فشل ${status.stats.failed}';
-                        } else if (status.isProcessing) {
-                          statusMessage =
-                              '🔄 جاري المعالجة... تم استيراد ${status.stats.successful} طالب حتى الآن';
-                        } else if (status.isPending) {
-                          statusMessage = '⏳ في انتظار بدء المعالجة...';
-                        } else if (status.isFailed) {
-                          statusMessage = '❌ فشلت المعالجة';
-                          if (status.errorLog.isNotEmpty) {
-                            statusMessage += ': ${status.errorLog.first}';
-                          }
-                        } else {
-                          statusMessage = status.statusLabel;
-                        }
-
-                        return _ProgressCard(
-                          progress: progressPercent,
-                          message: statusMessage,
-                          waitingTimeText: waitingTimeText,
-                          colors: colors,
-                          stats: status.stats,
-                        );
-                      }
-                      if (state is UploadInProgress) {
-                        return _ProgressCard(
-                          progress: 0,
-                          message: 'جاري رفع الملف...',
-                          waitingTimeText: '',
-                          colors: colors,
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-
-                  const SizedBox(height: 24),
-                  const _InfoSection(),
-                ],
+    return BlocListener<UploadCubit, UploadState>(
+      listener: (context, state) {
+        if (state is UploadFailure) {
+          setState(() => _errorMessage = state.message);
+        }
+        // ✅ ✅ ✅ الجزء المطلوب ✅ ✅ ✅
+        if (state is UploadCompleted) {
+          print('✅ Upload completed! Navigating to result screen...');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ImportResultScreen(
+                jobId: state.jobId,
+                index: state.index,
               ),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor:
+            isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+        body: SafeArea(
+          child: FadeTransition(
+            opacity: _fadeAnim,
+            child: SlideTransition(
+              position: _slideAnim,
+              child: isWide ? _buildWide(isDark) : _buildNarrow(isDark),
             ),
           ),
         ),
       ),
     );
   }
+
+  Widget _buildWide(bool isDark) {
+    return Row(
+      children: [
+        Expanded(flex: 5, child: _HeroPanel(isDark: isDark)),
+        Expanded(
+          flex: 6,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppTheme.spacingXXL),
+            child: _buildForm(isDark),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNarrow(bool isDark) {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: const _CompactHero()),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.spacingMD,
+            AppTheme.spacingLG,
+            AppTheme.spacingMD,
+            AppTheme.spacingXXL,
+          ),
+          sliver: SliverToBoxAdapter(child: _buildForm(isDark)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForm(bool isDark) {
+    return BlocBuilder<UploadCubit, UploadState>(
+      builder: (context, state) {
+        final isLoading = state is UploadInProgress;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'استيراد السجل الأكاديمي',
+              style: AppTextStyles.headlineSmall.copyWith(
+                color: isDark
+                    ? AppColors.textPrimaryDark
+                    : AppColors.textPrimaryLight,
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingXS),
+            Text(
+              'ارفع ملف Excel الخاص بالقسم لبدء التحليل التلقائي',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: isDark
+                    ? AppColors.textSecondaryDark
+                    : AppColors.textSecondaryLight,
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingXL),
+            _StepLabel(number: '١', label: 'اختر ملف Excel', isDark: isDark),
+            const SizedBox(height: AppTheme.spacingSM),
+            _FilePickerCard(
+              pickedFile: _pickedFile,
+              onTap: isLoading ? null : _pickFile,
+              isDark: isDark,
+            ),
+            const SizedBox(height: AppTheme.spacingXL),
+            _StepLabel(
+              number: '٢',
+              label: 'اختر القسم أو البرنامج',
+              isDark: isDark,
+            ),
+            const SizedBox(height: AppTheme.spacingSM),
+            _DepartmentSelector(
+              selected: _selectedDeptId,
+              onChanged: (v) {
+                if (!isLoading) {
+                  setState(() => _selectedDeptId = v);
+                }
+              },
+              isDark: isDark,
+            ),
+            const SizedBox(height: AppTheme.spacingXL),
+            if (_errorMessage != null) ...[
+              _ErrorBanner(message: _errorMessage!),
+              const SizedBox(height: AppTheme.spacingMD),
+            ],
+            _SubmitButton(
+              isLoading: isLoading,
+              isEnabled:
+                  _pickedFile != null && _selectedDeptId != null && !isLoading,
+              onPressed: _submit,
+            ),
+            const SizedBox(height: AppTheme.spacingXL),
+            const _InfoFooter(),
+          ],
+        );
+      },
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
-// Sub-widgets
+// Hero Panel (wide screens)
 // ─────────────────────────────────────────────
-
-class _HeaderCard extends StatelessWidget {
-  final ColorScheme colors;
-  const _HeaderCard({required this.colors});
+class _HeroPanel extends StatelessWidget {
+  final bool isDark;
+  const _HeroPanel({required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            colors.primaryContainer,
-            colors.secondaryContainer,
-          ],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(20),
-      ),
+      height: double.infinity,
+      decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
+      padding: const EdgeInsets.all(AppTheme.spacingXXL),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.table_chart_rounded, size: 56, color: colors.primary),
-          const SizedBox(height: 12),
-          Text(
-            'استيراد السجل الأكاديمي',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colors.onPrimaryContainer,
-                  fontWeight: FontWeight.bold,
-                ),
-            textAlign: TextAlign.center,
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+            ),
+            child:
+                const Icon(Icons.school_rounded, color: Colors.white, size: 36),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppTheme.spacingXL),
           Text(
-            'ارفع ملف Excel يحتوي على سجلات الطلاب\nسيتم تحليله تلقائياً بواسطة النظام الخبير',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colors.onPrimaryContainer.withValues(alpha: 0.8),
-                ),
-            textAlign: TextAlign.center,
+            'أكاديكسا',
+            style: AppTextStyles.displaySmall
+                .copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppTheme.spacingSM),
+          Text(
+            'نظام الإرشاد الأكاديمي الذكي\nكلية التربية النوعية\nجامعة كفرالشيخ',
+            style: AppTextStyles.bodyLarge.copyWith(
+              color: Colors.white.withValues(alpha: 0.85),
+              height: 1.8,
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingXXL),
+          ...[
+            (Icons.analytics_rounded, 'تحليل السجل الأكاديمي تلقائياً'),
+            (Icons.warning_amber_rounded, 'كشف المشكلات قبل وقوعها'),
+            (Icons.picture_as_pdf_rounded, 'تقارير احترافية قابلة للتصدير'),
+          ].map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: AppTheme.spacingMD),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+                    ),
+                    child: Icon(item.$1, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: AppTheme.spacingMD),
+                  Text(
+                    item.$2,
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -271,36 +316,288 @@ class _HeaderCard extends StatelessWidget {
   }
 }
 
-class _DepartmentDropdown extends StatelessWidget {
-  final String? selectedDepartment;
-  final ValueChanged<String?>? onChanged;
+// ─────────────────────────────────────────────
+// Compact Hero (mobile)
+// ─────────────────────────────────────────────
+class _CompactHero extends StatelessWidget {
+  const _CompactHero();
 
-  const _DepartmentDropdown({
-    required this.selectedDepartment,
-    required this.onChanged,
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: AppColors.heroGradient,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(AppTheme.spacingXL),
+          bottomRight: Radius.circular(AppTheme.spacingXL),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.spacingLG,
+        AppTheme.spacingXL,
+        AppTheme.spacingLG,
+        AppTheme.spacingXL,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+            ),
+            child:
+                const Icon(Icons.school_rounded, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: AppTheme.spacingMD),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'أكاديكسا',
+                  style: AppTextStyles.headlineMedium.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  'استيراد وتحليل السجلات الأكاديمية',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Reusable sub-widgets
+// ─────────────────────────────────────────────
+
+class _StepLabel extends StatelessWidget {
+  final String number;
+  final String label;
+  final bool isDark;
+
+  const _StepLabel({
+    required this.number,
+    required this.label,
+    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      initialValue: selectedDepartment,
-      hint: const Text('اختر القسم أو البرنامج'),
-      decoration: InputDecoration(
-        prefixIcon: const Icon(Icons.school_rounded),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+    return Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: AppColors.primaryMain,
+            borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            number,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        const SizedBox(width: AppTheme.spacingSM),
+        Text(
+          label,
+          style: AppTextStyles.titleSmall.copyWith(
+            color:
+                isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FilePickerCard extends StatelessWidget {
+  final File? pickedFile;
+  final VoidCallback? onTap;
+  final bool isDark;
+
+  const _FilePickerCard({
+    required this.pickedFile,
+    required this.onTap,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFile = pickedFile != null;
+    final fileName = pickedFile?.path.split(Platform.pathSeparator).last ?? '';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.all(AppTheme.spacingMD),
+        decoration: BoxDecoration(
+          color: hasFile
+              ? AppColors.primaryMain.withValues(alpha: 0.05)
+              : (isDark ? AppColors.surfaceDark : AppColors.surfaceLight),
+          border: Border.all(
+            color: hasFile
+                ? AppColors.primaryMain
+                : (isDark ? AppColors.borderDark : AppColors.borderLight),
+            width: hasFile ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+          boxShadow: hasFile ? AppShadows.soft : [],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: hasFile
+                    ? AppColors.primaryMain.withValues(alpha: 0.1)
+                    : (isDark
+                        ? AppColors.surfaceVariantDark
+                        : AppColors.surfaceVariantLight),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+              ),
+              child: Icon(
+                hasFile ? Icons.description_rounded : Icons.upload_file_rounded,
+                color: hasFile
+                    ? AppColors.primaryMain
+                    : (isDark
+                        ? AppColors.textTertiaryDark
+                        : AppColors.textTertiaryLight),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: AppTheme.spacingMD),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasFile ? 'تم اختيار الملف' : 'اضغط لاختيار ملف',
+                    style: AppTextStyles.labelLarge.copyWith(
+                      color: hasFile
+                          ? AppColors.primaryMain
+                          : (isDark
+                              ? AppColors.textPrimaryDark
+                              : AppColors.textPrimaryLight),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasFile ? fileName : 'xlsx, xls — حتى 50 MB',
+                    style: AppTextStyles.captionMedium.copyWith(
+                      color: isDark
+                          ? AppColors.textTertiaryDark
+                          : AppColors.textTertiaryLight,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              hasFile ? Icons.swap_horiz_rounded : Icons.chevron_left_rounded,
+              color: hasFile
+                  ? AppColors.primaryMain
+                  : (isDark
+                      ? AppColors.textTertiaryDark
+                      : AppColors.textTertiaryLight),
+              size: 20,
+            ),
+          ],
+        ),
       ),
-      items: kDepartments
-          .map((d) => DropdownMenuItem(
-                value: d['id'],
-                child: Text(d['label']!),
-              ))
-          .toList(),
-      onChanged: onChanged,
-      isExpanded: true,
+    );
+  }
+}
+
+class _DepartmentSelector extends StatelessWidget {
+  final String? selected;
+  final ValueChanged<String?>? onChanged;
+  final bool isDark;
+
+  const _DepartmentSelector({
+    required this.selected,
+    required this.onChanged,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        border: Border.all(
+          color: isDark ? AppColors.borderDark : AppColors.borderLight,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: selected,
+          hint: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMD),
+            child: Text(
+              'اختر القسم أو البرنامج',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: isDark
+                    ? AppColors.textTertiaryDark
+                    : AppColors.textTertiaryLight,
+              ),
+            ),
+          ),
+          isExpanded: true,
+          icon: Padding(
+            padding: const EdgeInsets.only(left: AppTheme.spacingMD),
+            child: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: isDark
+                  ? AppColors.textTertiaryDark
+                  : AppColors.textTertiaryLight,
+            ),
+          ),
+          dropdownColor:
+              isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+          style: AppTextStyles.bodyMedium.copyWith(
+            color:
+                isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingMD,
+            vertical: AppTheme.spacingSM,
+          ),
+          items: kDepartments.map((dept) {
+            return DropdownMenuItem<String>(
+              value: dept['id'],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacingMD,
+                ),
+                child: Text(dept['label']!),
+              ),
+            );
+          }).toList(),
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 }
@@ -312,22 +609,24 @@ class _ErrorBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(AppTheme.spacingMD),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.errorBg,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+        border: Border.all(color: AppColors.errorMain.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline_rounded,
-              color: Theme.of(context).colorScheme.onErrorContainer),
-          const SizedBox(width: 10),
+          const Icon(Icons.error_outline_rounded,
+              color: AppColors.errorMain, size: 20),
+          const SizedBox(width: AppTheme.spacingSM),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onErrorContainer),
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.errorDark,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -340,160 +639,96 @@ class _SubmitButton extends StatelessWidget {
   final bool isLoading;
   final bool isEnabled;
   final VoidCallback onPressed;
-  final ColorScheme colors;
 
   const _SubmitButton({
     required this.isLoading,
     required this.isEnabled,
     required this.onPressed,
-    required this.colors,
   });
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton.icon(
-      onPressed: isEnabled ? onPressed : null,
-      style: FilledButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-      icon: isLoading
-          ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: colors.onPrimary),
-            )
-          : const Icon(Icons.cloud_upload_rounded),
-      label: Text(
-        isLoading ? 'جاري الرفع...' : 'اختر ملف Excel وارفع',
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-}
-
-class _ProgressCard extends StatelessWidget {
-  final int progress;
-  final String message;
-  final String waitingTimeText;
-  final ColorScheme colors;
-  final ImportStatsModel? stats;
-
-  const _ProgressCard({
-    required this.progress,
-    required this.message,
-    required this.waitingTimeText,
-    required this.colors,
-    this.stats,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 16),
-      padding: const EdgeInsets.all(16),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(12),
+        gradient: isEnabled ? AppColors.primaryGradient : null,
+        color: isEnabled ? null : AppColors.disabledLight,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        boxShadow: isEnabled ? AppShadows.academicCard : [],
       ),
-      child: Column(
-        children: [
-          LinearProgressIndicator(
-            value: progress / 100,
-            backgroundColor: colors.surfaceContainerHighest,
-            color: colors.primary,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            style: TextStyle(color: colors.onSurfaceVariant),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$progress%',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: colors.primary,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isEnabled ? onPressed : null,
+          borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: AppTheme.spacingMD,
+              horizontal: AppTheme.spacingLG,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isLoading)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                else
+                  const Icon(Icons.cloud_upload_rounded,
+                      color: Colors.white, size: 20),
+                const SizedBox(width: AppTheme.spacingSM),
+                Text(
+                  isLoading ? 'جاري الرفع...' : 'رفع وتحليل الملف',
+                  style: AppTextStyles.labelLarge.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
             ),
           ),
-
-          // ✅ عرض وقت الانتظار
-          if (waitingTimeText.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              waitingTimeText,
-              style: TextStyle(
-                fontSize: 12,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'الملفات الكبيرة تحتاج وقت أطول للمعالجة',
-              style: TextStyle(
-                fontSize: 11,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-          ],
-
-          // ✅ عرض الإحصائيات
-          if (stats != null && (stats!.successful > 0 || stats!.failed > 0))
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle, size: 16, color: Colors.green),
-                  const SizedBox(width: 4),
-                  Text('${stats!.successful}',
-                      style: const TextStyle(color: Colors.green)),
-                  const SizedBox(width: 16),
-                  Icon(Icons.error, size: 16, color: Colors.red),
-                  const SizedBox(width: 4),
-                  Text('${stats!.failed}',
-                      style: const TextStyle(color: Colors.red)),
-                ],
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _InfoSection extends StatelessWidget {
-  const _InfoSection();
+class _InfoFooter extends StatelessWidget {
+  const _InfoFooter();
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppTheme.isDarkMode(context);
     final items = [
-      (Icons.security_rounded, 'ملفاتك آمنة ولا تُشارك مع أحد'),
+      (Icons.lock_outline_rounded, 'ملفاتك آمنة ولا تُشارك مع أحد'),
       (Icons.speed_rounded, 'المعالجة تستغرق ثوانٍ معدودة'),
       (Icons.offline_bolt_rounded, 'النتائج تُحفظ محلياً للوصول بدون إنترنت'),
     ];
-
     return Column(
       children: items
-          .map((item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(item.$1,
-                        size: 18, color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(width: 10),
-                    Text(item.$2,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            )),
-                  ],
-                ),
-              ))
+          .map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: AppTheme.spacingSM),
+              child: Row(
+                children: [
+                  Icon(item.$1, size: 16, color: AppColors.tealHighlight),
+                  const SizedBox(width: AppTheme.spacingSM),
+                  Text(
+                    item.$2,
+                    style: AppTextStyles.captionMedium.copyWith(
+                      color: isDark
+                          ? AppColors.textTertiaryDark
+                          : AppColors.textTertiaryLight,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
           .toList(),
     );
   }

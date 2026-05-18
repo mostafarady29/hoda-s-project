@@ -35,8 +35,8 @@ class ImportMapper {
 
     return Semester(
       department: _str(s['department']),
-      levelSemester: _str(s['level_semester']), // e.g. "الأول / الأول"
-      academicYear: _str(s['academic_year']), // e.g. "2020/2021"
+      levelSemester: _str(s['level_semester']),
+      academicYear: _str(s['academic_year']),
       totalPassedHours: _parseInt(s['total_passed_hours']),
       gpa: _parseDouble(s['gpa']),
       grade: _str(s['grade']),
@@ -70,23 +70,77 @@ class ImportMapper {
 
   String _str(dynamic v) => v?.toString().trim() ?? '';
 
+  // ✅ ✅ ✅ التصحيح الرئيسي هنا ✅ ✅ ✅
   int _parseInt(dynamic v) {
-    if (v == null || v.toString().trim().isEmpty) return 0;
-    return int.tryParse(v.toString().trim()) ?? 0;
+    if (v == null) return 0;
+
+    // لو الرقم جاي كـ int
+    if (v is int) return v;
+
+    // لو الرقم جاي كـ double
+    if (v is double) return v.toInt();
+
+    // لو الرقم جاي كـ num
+    if (v is num) return v.toInt();
+
+    // لو الرقم جاي كـ String
+    if (v is String) {
+      final trimmed = v.trim();
+      if (trimmed.isEmpty) return 0;
+      return int.tryParse(trimmed) ?? 0;
+    }
+
+    return 0;
   }
 
+  // ✅ ✅ ✅ التصحيح الرئيسي هنا ✅ ✅ ✅
   double _parseDouble(dynamic v) {
-    if (v == null || v.toString().trim().isEmpty) return 0.0;
-    return double.tryParse(v.toString().trim()) ?? 0.0;
+    if (v == null) return 0.0;
+
+    // لو الرقم جاي كـ double
+    if (v is double) return v;
+
+    // لو الرقم جاي كـ int
+    if (v is int) return v.toDouble();
+
+    // لو الرقم جاي كـ num
+    if (v is num) return v.toDouble();
+
+    // لو الرقم جاي كـ String
+    if (v is String) {
+      final trimmed = v.trim();
+      if (trimmed.isEmpty) return 0.0;
+      return double.tryParse(trimmed) ?? 0.0;
+    }
+
+    return 0.0;
   }
 
-  /// الباك اند بيرجع "نعم" أو "" أو "راسب" أو درجة
+  /// الباك اند بيرجع "√" أو "X" أو درجة
   bool _parsePassed(dynamic v) {
-    final s = v?.toString().trim().toLowerCase() ?? '';
-    if (s == 'نعم' || s == 'yes' || s == 'true' || s == '1') return true;
-    if (s == 'راسب' || s == 'no' || s == 'false' || s == '0') return false;
-    // لو درجة → اعتبرها ناجح لو > 0
+    if (v == null) return false;
+
+    // لو boolean
+    if (v is bool) return v;
+
+    final s = v.toString().trim().toLowerCase();
+
+    // علامات النجاح
+    if (s == '√' || s == 'نعم' || s == 'yes' || s == 'true' || s == '1')
+      return true;
+
+    // علامات الرسوب
+    if (s == '×' ||
+        s == 'x' ||
+        s == 'راسب' ||
+        s == 'no' ||
+        s == 'false' ||
+        s == '0') return false;
+
+    // لو درجة → اعتبرها ناجح لو >= 60
     final num = double.tryParse(s);
-    return num != null && num > 0;
+    if (num != null) return num >= 60;
+
+    return false;
   }
 }

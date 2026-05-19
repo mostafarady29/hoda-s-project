@@ -22,7 +22,7 @@
       "equivalent_codes": ["10001"],
       "raw_prerequisite_text": "",
       "source_section": "University Electives",
-      "conflict_with": []
+      "conflict_with": [60001]
     },
     {
       "course_code": "20401",
@@ -41,7 +41,7 @@
       "equivalent_codes": ["20401"],
       "raw_prerequisite_text": "",
       "source_section": "University Electives",
-      "conflict_with": []
+      "conflict_with": [30001]
     },
     {
       "course_code": "30001",
@@ -60,7 +60,7 @@
       "equivalent_codes": ["30001"],
       "raw_prerequisite_text": "",
       "source_section": "University Electives",
-      "conflict_with": []
+      "conflict_with": [20401]
     },
     {
       "course_code": "60401",
@@ -117,7 +117,7 @@
       "equivalent_codes": ["60001"],
       "raw_prerequisite_text": "",
       "source_section": "University Electives",
-      "conflict_with": []
+      "conflict_with": [10001]
     },
     {
       "course_code": "70101",

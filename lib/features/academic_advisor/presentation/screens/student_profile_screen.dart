@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../domain/entities/student.dart';
 import '../../../../features/data_import/presentation/cubit/student_cubit.dart';
-import '../../../../data/models/student_index_model.dart';
 
 class StudentProfileScreen extends StatefulWidget {
   final String jobId;

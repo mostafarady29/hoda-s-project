@@ -3,7 +3,6 @@
 // يحضّر الحقائق (Facts) من سجل الطالب واللائحة
 // قبل تشغيل قواعد النظام الخبير
 
-import '../../entities/course.dart';
 import '../../entities/student.dart';
 import '../../../data/models/study_plan_model.dart';
 

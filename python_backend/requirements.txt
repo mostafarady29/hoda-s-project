@@ -13,6 +13,9 @@ openpyxl==3.1.2
 # Data validation
 pydantic==2.6.4
 
+#Database
+supabase==2.0.4
+
 # Environment
 python-dotenv==1.0.0
 

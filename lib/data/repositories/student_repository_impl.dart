@@ -6,7 +6,6 @@ import '../../domain/repositories/student_repository.dart';
 import '../../domain/entities/student.dart';
 import '../datasources/remote/student_remote_data_source.dart';
 import '../mappers/import_mapper.dart';
-import '../models/imported_json_record.dart';
 import '../../core/services/storage/hive_storage_service.dart';
 
 class StudentRepositoryImpl implements StudentRepository {

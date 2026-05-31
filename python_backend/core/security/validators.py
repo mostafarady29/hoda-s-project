@@ -1,17 +1,15 @@
-# ===== File: python_backend/core/security/validators.py =====
-import re
-from typing import Tuple, List, Optional
+# ===== File: core/security/validators.py (معدل) =====
+
 from pathlib import Path
 import openpyxl
 
 class ExcelValidator:
     """Excel file validation"""
     
-    # Required columns (from old code)
-    REQUIRED_COLUMNS = ['CD', 'BC', 'BU', 'AL', 'O', 'Q', 'I']
+    REQUIRED_COLUMNS = ['CD', 'BC', 'BU', 'AL', 'O', 'Q', 'I']  # Reference only
     
     @staticmethod
-    def validate_file(file_path: Path) -> Tuple[bool, List[str]]:
+    def validate_file(file_path: Path) -> tuple[bool, list[str]]:
         """
         Validate file format and structure
         Returns: (is_valid, errors_list)
@@ -30,7 +28,7 @@ class ExcelValidator:
             errors.append(f"File too large: {file_size / 1024 / 1024:.2f}MB > 50MB")
             return False, errors
         
-        # 3. Try to open and validate structure (sample check)
+        # 3. Try to open and validate basic structure
         try:
             wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
             sheets = wb.sheetnames
@@ -39,23 +37,20 @@ class ExcelValidator:
                 errors.append("No sheets found in workbook")
                 return False, errors
             
-            # Check first sheet for required columns (sample validation)
-            first_sheet = wb[sheets[0]]
+            # Check at least one sheet has data
+            has_data = False
+            for sheet_name in sheets[:3]:  # Check first 3 sheets
+                ws = wb[sheet_name]
+                # Check if there's any non-empty cell
+                for row in ws.iter_rows(max_row=10, max_col=10, values_only=True):
+                    if any(cell for cell in row):
+                        has_data = True
+                        break
+                if has_data:
+                    break
             
-            # Get all column letters from first 20 rows
-            found_columns = set()
-            for row in range(1, min(20, first_sheet.max_row) + 1):
-                for col in ExcelValidator.REQUIRED_COLUMNS:
-                    try:
-                        if first_sheet[f"{col}{row}"].value is not None:
-                            found_columns.add(col)
-                    except:
-                        pass
-            
-            # Don't fail if columns not found in first rows, just warn
-            missing_cols = set(ExcelValidator.REQUIRED_COLUMNS) - found_columns
-            if missing_cols:
-                errors.append(f"Warning: Some columns may be empty or missing: {missing_cols}")
+            if not has_data:
+                errors.append("No data found in workbook")
             
             wb.close()
             

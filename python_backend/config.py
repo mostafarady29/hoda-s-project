@@ -1,5 +1,3 @@
-# ===== File: python_backend/config.py =====
-
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,19 +14,21 @@ class Config:
     LOGS_DIR = BASE_DIR / "logs"
     JOBS_DIR = STORAGE_DIR / "jobs"
 
-    # Create all dirs on import
     for _dir in [TEMP_UPLOADS, OUTPUT_DIR, LOGS_DIR, JOBS_DIR]:
         _dir.mkdir(parents=True, exist_ok=True)
 
+    # ── Supabase
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
     # ── Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "acadexa-secret-key-change-in-production")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "acadexa-secret-key")
 
     # ── CORS
-    # على Railway/Flutter Web لازم نقبل كل الأصول
     ALLOWED_ORIGINS: list = ["*"]
 
     # ── File limits
-    MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", 50 * 1024 * 1024))   # 50 MB
+    MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", 50 * 1024 * 1024))
     ALLOWED_EXTENSIONS: set = {".xlsx", ".xls"}
 
     # ── Concurrency
@@ -44,9 +44,6 @@ class Config:
     # ── API
     API_V1_PREFIX: str = "/api/v1"
 
-    # ── Server (Railway injects PORT automatically)
+    # ── Server
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", 8000))
-
-    # ── JSON safety limit
-    MAX_JSON_SIZE: int = 5 * 1024 * 1024   # 5 MB per response

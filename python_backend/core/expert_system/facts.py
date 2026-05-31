@@ -1,57 +1,81 @@
-# backend/app/core/expert_system/facts.py
+"""
+Expert System — Facts (Working Memory).
+Holds all data about a student's record and the curriculum.
+"""
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Set
 
-from dataclasses import dataclass
-from typing import Any, Optional
-from datetime import datetime
 
 @dataclass
-class Fact:
-    """حقيقة واحدة عن الطالب"""
-    fact_type: str  # 'course_taken', 'gpa', 'total_credits', 'semester_hours'
-    value: Any      # القيمة (مثلاً: كود المادة أو الرقم)
-    semester: Optional[str] = None  # الترم اللي أخذ فيه المادة (لو ينطبق)
-    timestamp: Optional[datetime] = None
-    
-    def __repr__(self):
-        return f"Fact({self.fact_type}={self.value})"
+class CourseFact:
+    """A single course in the student's record."""
+    course_code: str
+    course_name: str
+    credit_hours: int
+    passed: bool
+    grade_letter: Optional[str]
+    grade_points: Optional[float]
+    score: Optional[float]
+    semester_number: int
+    is_retake: bool = False
+    is_transfer: bool = False
+    course_id: Optional[str] = None
 
 
-class FactManager:
-    """يدير كل الحقائق للطالب"""
-    
-    def __init__(self):
-        self.facts: List[Fact] = []
-    
-    def add_fact(self, fact: Fact):
-        self.facts.append(fact)
-    
-    def add_course_taken(self, course_code: str, semester: str, grade: str, passed: bool):
-        """إضافة حقيقة أن الطالب أخذ مادة معينة"""
-        self.add_fact(Fact('course_taken', course_code, semester))
-        if passed:
-            self.add_fact(Fact('course_passed', course_code, semester))
-        self.add_fact(Fact(f'grade_{course_code}', grade, semester))
-    
-    def add_gpa(self, gpa: float, semester: Optional[str] = None):
-        self.add_fact(Fact('gpa', gpa, semester))
-    
-    def add_total_credits(self, credits: int):
-        self.add_fact(Fact('total_credits', credits))
-    
-    def add_semester_hours(self, hours: int, semester: str):
-        self.add_fact(Fact('semester_hours', hours, semester))
-    
-    def get_facts_by_type(self, fact_type: str) -> List[Fact]:
-        return [f for f in self.facts if f.fact_type == fact_type]
-    
-    def has_taken_course(self, course_code: str) -> bool:
-        return any(f.value == course_code for f in self.facts if f.fact_type == 'course_taken')
-    
-    def has_passed_course(self, course_code: str) -> bool:
-        return any(f.value == course_code for f in self.facts if f.fact_type == 'course_passed')
-    
-    def get_course_semester(self, course_code: str) -> Optional[str]:
-        for f in self.facts:
-            if f.fact_type == 'course_taken' and f.value == course_code:
-                return f.semester
-        return None
+@dataclass
+class SemesterFact:
+    """A semester in the student's record."""
+    semester_number: int
+    academic_year: Optional[str]
+    term: Optional[str]  # fall / spring / summer
+    level_semester: Optional[str]  # e.g. "المستوى الأول - الفصل الأول"
+    total_hours: int
+    semester_gpa: Optional[float]
+    courses: List[CourseFact] = field(default_factory=list)
+
+
+@dataclass
+class StudentFacts:
+    """The complete working memory for one student."""
+    student_id: str
+    student_code: str
+    student_name: str
+    department_id: Optional[str]
+    study_plan_id: Optional[str]
+    study_level: Optional[int]
+    enrollment_year: Optional[int]
+    cumulative_gpa: float
+    cumulative_percentage: Optional[float]
+
+    semesters: List[SemesterFact] = field(default_factory=list)
+
+    # Derived collections (populated by FactManager)
+    all_courses: List[CourseFact] = field(default_factory=list)
+    passed_codes: Set[str] = field(default_factory=set)
+    failed_codes: Set[str] = field(default_factory=set)
+    all_codes: Set[str] = field(default_factory=set)
+    total_passed_hours: int = 0
+    total_attempted_hours: int = 0
+    calculated_gpa: float = 0.0
+
+
+@dataclass
+class CurriculumFacts:
+    """The curriculum (study plan + rules)."""
+    plan_id: str
+    total_credit_hours: int
+    min_gpa_to_graduate: float
+
+    courses_by_code: Dict[str, Dict] = field(default_factory=dict)    # code -> course row
+    courses_by_id: Dict[str, Dict] = field(default_factory=dict)      # id -> course row
+    prerequisites: Dict[str, List[Dict]] = field(default_factory=dict) # course_id -> [prereqs]
+    equivalents: Dict[str, List[str]] = field(default_factory=dict)    # course_id -> [codes]
+    elective_groups: List[Dict] = field(default_factory=list)
+    plan_structure: List[Dict] = field(default_factory=list)
+    grade_scale_items: List[Dict] = field(default_factory=list)
+    load_rules: Optional[Dict] = None
+    grad_requirements: Optional[Dict] = None
+    field_training_rules: Optional[Dict] = None
+
+    # Reverse map: equivalent_code -> canonical course_id
+    equiv_reverse: Dict[str, str] = field(default_factory=dict)

@@ -1,21 +1,12 @@
-# ===== File: core/parser/excel_parser.py (معدل) =====
-"""
-Excel Parser v2.1 - معدل للكتابة مباشرة في Supabase
-بدلاً من حفظ JSON files
-"""
-
 import openpyxl
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 from datetime import datetime
-from supabase import create_client, Client
-import os
-from dotenv import load_dotenv
+import uuid
+import logging
+import re
 
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+logger = logging.getLogger("acadexa.parser")
 
 def clean(value):
     if value is None:
@@ -58,7 +49,7 @@ def get_cell_with_offset(ws, base_col_letter, base_row, row_offset, col_offset):
     return get_cell(ws, new_col_letter, new_row)
 
 def parse_student_info_old(ws):
-    """Parse student basic info from sheet"""
+    """Parse student information from first rows"""
     student = {
         "id": "",
         "name": "",
@@ -79,7 +70,7 @@ def parse_student_info_old(ws):
     return student
 
 def parse_semesters_with_offset(ws):
-    """Parse semesters with automatic offset"""
+    """Parse semesters with automatic offset support"""
     
     row_offset, col_offset = detect_offset(ws)
     
@@ -183,178 +174,248 @@ def parse_semesters_with_offset(ws):
 class ExcelParser:
     """Excel parser that reads all sheets and saves directly to Supabase"""
     
-    def __init__(self, file_path: Path, department_name: str = ""):
+    def __init__(self, file_path: Path, department_code: str = ""):
         self.file_path = file_path
-        self.department_name = department_name
-        self.errors = []
+        self.department_code = department_code
         self.stats = {"students": 0, "courses": 0, "semesters": 0}
-        self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL else None
+        self.errors = []
+        self._supabase = None
+        self._department_id = None  # <-- جديد: تخزين الـ department_id مؤقتاً
+        
+    def _get_supabase(self):
+        """Lazy load Supabase client"""
+        if self._supabase is None:
+            try:
+                from core.db.supabase_client import supabase
+                self._supabase = supabase
+            except ImportError:
+                logger.warning("Supabase client not available, using JSON output only")
+                self._supabase = None
+        return self._supabase
     
-    def get_department_id(self) -> str:
-        """Get department ID from code"""
-        if not self.supabase:
-            return None
-        result = self.supabase.table("departments").select("id").eq("code", self.department_name).execute()
-        return result.data[0]["id"] if result.data else None
-    
-    def get_study_plan_id(self, department_id: str, enrollment_year: int) -> str:
-        """Get appropriate study plan ID"""
-        if not self.supabase:
-            return None
-        # Try exact year
-        result = self.supabase.table("study_plans").select("id").eq("department_id", department_id).eq("academic_year", enrollment_year).eq("status", "active").execute()
-        if result.data:
-            return result.data[0]["id"]
-        # Try earlier year
-        result = self.supabase.table("study_plans").select("id").eq("department_id", department_id).lte("academic_year", enrollment_year).eq("status", "active").order("academic_year", desc=True).limit(1).execute()
-        if result.data:
-            return result.data[0]["id"]
-        # Fallback to current plan
-        result = self.supabase.table("study_plans").select("id").eq("department_id", department_id).eq("status", "active").eq("is_current", True).limit(1).execute()
-        return result.data[0]["id"] if result.data else None
-    
-    def save_to_supabase(self, student_info: Dict, courses: List[Dict], department_id: str, study_plan_id: str):
-        """Save student and courses to Supabase"""
-        if not self.supabase:
+    def _get_department_id(self):
+        """Get department ID from department code (cached)"""
+        if self._department_id is not None:
+            return self._department_id
+        
+        if not self.department_code:
             return None
         
-        enrollment_year = datetime.now().year
-        
-        # Save student
-        student_result = self.supabase.table("students").upsert({
-            "student_code": student_info["id"],
-            "name": student_info["name"],
-            "department_id": department_id,
-            "study_plan_id": study_plan_id,
-            "enrollment_year": enrollment_year,
-            "study_level": int(student_info["study_level"]) if student_info["study_level"].isdigit() else 1,
-            "cumulative_percentage": float(student_info["cumulative_percentage"]) if student_info["cumulative_percentage"] else None,
-            "is_active": True
-        }).execute()
-        
-        if not student_result.data:
-            return None
-        
-        student_id = student_result.data[0]["id"]
-        self.stats["students"] += 1
-        
-        semesters_seen = set()
-        semester_counter = 1
-        
-        for course in courses:
-            semester_key = f"{semester_counter}"
-            if semester_key not in semesters_seen:
-                self.supabase.table("student_semesters").insert({
-                    "student_id": student_id,
-                    "semester_number": semester_counter,
-                    "academic_year": str(enrollment_year),
-                    "term": "fall" if semester_counter % 2 == 1 else "spring"
-                }).execute()
-                semesters_seen.add(semester_key)
-                self.stats["semesters"] += 1
-            
-            semester_result = self.supabase.table("student_semesters").select("id").eq("student_id", student_id).eq("semester_number", semester_counter).execute()
-            
-            if semester_result.data:
-                semester_id = semester_result.data[0]["id"]
-                
-                # Match course with study plan
-                matched_course_id = None
-                match_result = self.supabase.table("courses").select("id").eq("plan_id", study_plan_id).eq("code", course.get("course_code", "")).execute()
-                if match_result.data:
-                    matched_course_id = match_result.data[0]["id"]
-                
-                self.supabase.table("student_courses").insert({
-                    "student_id": student_id,
-                    "semester_id": semester_id,
-                    "course_code": course.get("course_code", ""),
-                    "course_name": course.get("course_name", ""),
-                    "credit_hours": int(course.get("hours", 0)),
-                    "passed": course.get("passed", "") == "نعم",
-                    "grade_letter": course.get("grade_letter", ""),
-                    "score": float(course.get("score", 0)) if course.get("score", "").replace('.', '').isdigit() else 0,
-                    "matched_course_id": matched_course_id
-                }).execute()
-                self.stats["courses"] += 1
-            
-            semester_counter += 1
-        
-        # Run analysis
         try:
-            self.supabase.rpc("analyze_student_progress_optimized", {
-                "p_student_id": student_id,
-                "p_force_refresh": False
-            }).execute()
+            supabase = self._get_supabase()
+            if supabase:
+                result = supabase.table("departments").select("id").eq("code", self.department_code).execute()
+                if result.data:
+                    self._department_id = result.data[0]["id"]
+                    logger.info(f"Found department ID {self._department_id} for code {self.department_code}")
+                    return self._department_id
         except Exception as e:
-            self.errors.append(f"Analysis failed: {str(e)}")
+            logger.warning(f"Could not find department for code {self.department_code}: {e}")
         
-        return student_id
+        return None
     
     def parse_all_students(self) -> Tuple[List[Dict], List[Dict]]:
-        """Parse all sheets and save to Supabase"""
-        
-        if not self.supabase:
-            self.errors.append("Supabase not configured. Check SUPABASE_URL and SUPABASE_KEY")
-            return [], self.errors
-        
-        department_id = self.get_department_id()
-        if not department_id:
-            self.errors.append(f"Department not found: {self.department_name}")
-            return [], self.errors
-        
-        enrollment_year = datetime.now().year
-        study_plan_id = self.get_study_plan_id(department_id, enrollment_year)
-        
-        if not study_plan_id:
-            self.errors.append(f"No study plan found for department: {self.department_name}")
-            return [], self.errors
-        
+        """Parse all students and save to Supabase if available"""
         students = []
+        errors = []
         
         try:
             wb = openpyxl.load_workbook(self.file_path, data_only=True)
+            logger.info(f"Opened workbook with {len(wb.sheetnames)} sheets")
             
             for sheet_name in wb.sheetnames:
                 try:
                     ws = wb[sheet_name]
                     
                     student_info = parse_student_info_old(ws)
-                    student_info['department'] = self.department_name
+                    student_info['department_code'] = self.department_code
                     
                     semesters = parse_semesters_with_offset(ws)
                     
-                    # Save to Supabase
-                    student_id = self.save_to_supabase(student_info, [], department_id, study_plan_id)
+                    student_data = {
+                        "student": student_info,
+                        "semesters": semesters,
+                        "sheet_name": sheet_name,
+                        "parsed_at": datetime.utcnow().isoformat()
+                    }
                     
-                    # Flatten courses from semesters
-                    all_courses = []
-                    for sem in semesters:
-                        all_courses.extend(sem.get("courses", []))
-                    
-                    self.save_to_supabase(student_info, all_courses, department_id, study_plan_id)
-                    
-                    if student_info.get('id'):
-                        student_data = {
-                            "student": student_info,
-                            "semesters": semesters,
-                            "sheet_name": sheet_name,
-                            "parsed_at": datetime.utcnow().isoformat(),
-                            "saved_to_db": True
-                        }
+                    if student_data.get('student', {}).get('id'):
                         students.append(student_data)
+                        self.stats["students"] += 1
+                        self.stats["semesters"] += len(semesters)
+                        for sem in semesters:
+                            self.stats["courses"] += len(sem.get("courses", []))
+                        
+                        # Save to Supabase if available
+                        if self._get_supabase():
+                            self._save_to_supabase(student_data)
                     else:
-                        self.errors.append({"sheet": sheet_name, "error": "No valid student ID found"})
+                        errors.append({
+                            "sheet": sheet_name,
+                            "error": "No valid student ID found"
+                        })
                         
                 except Exception as e:
-                    self.errors.append({"sheet": sheet_name, "error": str(e)})
+                    error_msg = str(e)
+                    logger.error(f"Error parsing sheet {sheet_name}: {error_msg}")
+                    errors.append({
+                        "sheet": sheet_name,
+                        "error": error_msg
+                    })
                     continue
             
             wb.close()
+            logger.info(f"Parsing complete: {self.stats}")
             
         except Exception as e:
-            self.errors.append({"sheet": "all", "error": f"Failed to open workbook: {str(e)}"})
+            logger.error(f"Failed to open workbook: {e}")
+            errors.append({
+                "sheet": "all",
+                "error": f"Failed to open workbook: {str(e)}"
+            })
             
-        return students, self.errors
+        return students, errors
+    
+    def _save_to_supabase(self, student_data: Dict):
+        """Save student data to Supabase with all fields populated"""
+        supabase = self._get_supabase()
+        if not supabase:
+            return
+        
+        student_info = student_data["student"]
+        student_code = student_info.get("id")
+        semesters = student_data.get("semesters", [])
+        
+        if not student_code:
+            logger.warning(f"Skipping student without ID: {student_info.get('name')}")
+            return
+        
+        try:
+            # 1. استخراج سنة الالتحاق من أول ترم
+            enrollment_year = None
+            cumulative_gpa = None
+            study_level_num = None
+            
+            if semesters:
+                # سنة الالتحاق من أول ترم
+                first_semester = semesters[0]
+                academic_year = first_semester.get("academic_year", "")
+                if "-" in academic_year:
+                    try:
+                        enrollment_year = int(academic_year.split("-")[0])
+                    except:
+                        pass
+                
+                # GPA من آخر ترم (هو التراكمي)
+                last_semester = semesters[-1]
+                if last_semester.get("gpa"):
+                    try:
+                        cumulative_gpa = float(last_semester.get("gpa", 0))
+                    except:
+                        pass
+            
+            # 2. استخراج رقم المستوى من النص
+            level_str = student_info.get("study_level", "")
+            level_map = {"الأول": 1, "الثاني": 2, "الثالث": 3, "الرابع": 4}
+            for key, value in level_map.items():
+                if key in level_str:
+                    study_level_num = value
+                    break
+            
+            # 3. الحصول على department_id من الكود
+            department_id = self._get_department_id()
+            
+            # 4. إدراج الطالب بكل البيانات
+            student_result = supabase.table("students").insert({
+                "student_code": student_code,
+                "name": student_info.get("name", ""),
+                "department_id": department_id,
+                "enrollment_year": enrollment_year,
+                "study_level": study_level_num,
+                "cumulative_gpa": cumulative_gpa,
+                "cumulative_percentage": self._parse_percentage(student_info.get("cumulative_percentage", "")),
+                "is_active": True,
+            }).execute()
+            
+            student_db_id = student_result.data[0]["id"]
+            logger.info(f"✅ Inserted student {student_code} (level: {study_level_num}, year: {enrollment_year}, GPA: {cumulative_gpa})")
+            
+            # 5. إدراج الفصول والمواد
+            for idx, semester in enumerate(student_data.get("semesters", [])):
+                semester_result = supabase.table("student_semesters").insert({
+                    "student_id": student_db_id,
+                    "semester_number": idx + 1,
+                    "academic_year": semester.get("academic_year", ""),
+                    "total_hours": self._parse_int(semester.get("semester_hours")),
+                    "semester_gpa": self._parse_float(semester.get("semester_gpa")),
+                }).execute()
+                
+                semester_db_id = semester_result.data[0]["id"]
+                
+                for course in semester.get("courses", []):
+                    grade_points = self._calculate_grade_points(course.get("grade_letter", ""))
+                    passed = course.get("passed", "نعم") == "نعم"
+                    
+                    supabase.table("student_courses").insert({
+                        "student_id": student_db_id,
+                        "semester_id": semester_db_id,
+                        "course_code": course.get("course_code", ""),
+                        "course_name": course.get("course_name", ""),
+                        "credit_hours": self._parse_int(course.get("hours")),
+                        "credit_hours_attempted": self._parse_int(course.get("hours")),
+                        "passed": passed,
+                        "grade_letter": course.get("grade_letter", ""),
+                        "grade_points": grade_points,
+                        "score": self._parse_float(course.get("score")),
+                    }).execute()
+                    
+            logger.debug(f"Successfully saved student {student_code} with {len(semesters)} semesters")
+            
+        except Exception as e:
+            logger.error(f"Failed to save student {student_code} to Supabase: {e}")
+            self.errors.append({
+                "student_code": student_code,
+                "error": str(e)
+            })
+    
+    def _parse_int(self, value) -> int:
+        """Safely parse integer from string"""
+        if not value:
+            return 0
+        try:
+            return int(float(str(value)))
+        except:
+            return 0
+    
+    def _parse_float(self, value) -> float:
+        """Safely parse float from string"""
+        if not value:
+            return None
+        try:
+            return float(str(value))
+        except:
+            return None
+    
+    def _parse_percentage(self, value) -> float:
+        """Parse percentage string like '72.5%' to float"""
+        if not value:
+            return None
+        try:
+            return float(str(value).replace("%", "").strip())
+        except:
+            return None
+    
+    def _calculate_grade_points(self, grade_letter: str) -> float:
+        """Convert grade letter to grade points"""
+        grade_map = {
+            "A+": 4.0, "A": 4.0, "A-": 3.7,
+            "B+": 3.3, "B": 3.0, "B-": 2.7,
+            "C+": 2.3, "C": 2.0, "C-": 1.7,
+            "D+": 1.3, "D": 1.0, "D-": 0.7,
+            "F": 0.0
+        }
+        return grade_map.get(grade_letter, 0.0)
     
     def get_stats(self) -> Dict:
+        """Get parsing statistics"""
         return self.stats

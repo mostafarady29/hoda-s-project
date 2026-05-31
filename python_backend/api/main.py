@@ -1,5 +1,3 @@
-# ===== File: python_backend/api/main.py =====
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -12,48 +10,42 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import Config
-from .routes import upload
+from api.routes import upload, students, curriculum, departments
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Logging
-# ─────────────────────────────────────────────
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("acadexa")
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # FastAPI app
-# ─────────────────────────────────────────────
 app = FastAPI(
     title="Acadexa Backend API",
-    description="نظام معالجة السجلات الأكاديمية - كلية التربية النوعية جامعة كفرالشيخ",
-    version="2.1.0",
+    description="نظام خبير للإرشاد الأكاديمي - كلية التربية النوعية جامعة كفرالشيخ",
+    version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Middlewares
-# ─────────────────────────────────────────────
-
-# 1. GZip compression (reduces response size ~60%)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# 2. CORS — مفتوح للكل في dev, محدود في production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # Railway + Flutter Web + Mobile
-    allow_credentials=False,      # لازم False لما allow_origins="*"
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_origins=Config.ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["X-Job-Id", "X-Processing-Time"],
     max_age=3600,
 )
 
-# 3. Request timing middleware
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.perf_counter()
@@ -62,7 +54,7 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Processing-Time"] = f"{process_time:.2f}ms"
     return response
 
-# 4. Request size limit middleware
+
 @app.middleware("http")
 async def limit_request_size(request: Request, call_next):
     content_length = request.headers.get("content-length")
@@ -74,52 +66,49 @@ async def limit_request_size(request: Request, call_next):
     return await call_next(request)
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Routers
-# ─────────────────────────────────────────────
-app.include_router(
-    upload.router,
-    prefix=Config.API_V1_PREFIX,
-    tags=["معالجة ملفات Excel"],
-)
+app.include_router(upload.router, prefix=Config.API_V1_PREFIX, tags=["استيراد وتحليل"])
+app.include_router(students.router, prefix=Config.API_V1_PREFIX, tags=["الطلاب"])
+app.include_router(curriculum.router, prefix=Config.API_V1_PREFIX, tags=["اللوائح الدراسية"])
+app.include_router(departments.router, prefix=Config.API_V1_PREFIX, tags=["الأقسام والبرامج"])
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Core endpoints
-# ─────────────────────────────────────────────
-@app.get("/health", tags=["النظام"], summary="فحص حالة الخادم")
+@app.get("/health", tags=["النظام"])
 async def health_check():
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "healthy",
-            "version": "2.1.0",
-            "service": "Acadexa Academic Records API",
-        },
-    )
+    return JSONResponse(status_code=200, content={
+        "status": "healthy",
+        "version": "3.0.0",
+        "service": "Acadexa Expert System API",
+    })
 
 
-@app.get("/", tags=["النظام"], summary="الصفحة الرئيسية")
+@app.get("/", tags=["النظام"])
 async def root():
     return {
-        "message": "🎓 Acadexa Academic Records API",
-        "version": "2.1.0",
+        "message": "🎓 Acadexa Expert System API",
+        "version": "3.0.0",
         "docs": "/docs",
         "health": "/health",
         "endpoints": {
-            "upload_excel":     f"{Config.API_V1_PREFIX}/upload          [POST]",
-            "job_status":       f"{Config.API_V1_PREFIX}/job/{{job_id}}    [GET]",
-            "result_index":     f"{Config.API_V1_PREFIX}/result/{{job_id}} [GET]",
-            "student_detail":   f"{Config.API_V1_PREFIX}/result/{{job_id}}/student/{{student_id}} [GET]",
-            "students_batch":   f"{Config.API_V1_PREFIX}/result/{{job_id}}/students/batch?ids=id1,id2 [GET]",
-            "delete_job":       f"{Config.API_V1_PREFIX}/job/{{job_id}}    [DELETE]",
+            "upload_excel": f"{Config.API_V1_PREFIX}/upload",
+            "students": f"{Config.API_V1_PREFIX}/students",
+            "analyze": f"{Config.API_V1_PREFIX}/analyze/{{student_id}}",
+            "curriculum": f"{Config.API_V1_PREFIX}/plans",
+            "departments": f"{Config.API_V1_PREFIX}/departments",
+            "curriculum_api": {
+                "plans": f"{Config.API_V1_PREFIX}/curriculum/plans",
+                "plan_detail": f"{Config.API_V1_PREFIX}/curriculum/plans/{{plan_id}}",
+                "courses": f"{Config.API_V1_PREFIX}/curriculum/plans/{{plan_id}}/courses",
+                "elective_groups": f"{Config.API_V1_PREFIX}/curriculum/elective-groups",
+                "grading_scales": f"{Config.API_V1_PREFIX}/curriculum/grading-scales",
+            }
         },
     }
 
 
-# ─────────────────────────────────────────────
-# Global error handler
-# ─────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error on {request.url}: {exc}", exc_info=True)

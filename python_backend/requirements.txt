@@ -20,8 +20,7 @@ aiofiles==23.2.1
 # JSON logging
 python-json-logger==2.0.7
 
-# HTTP client
-httpx==0.25.2
-
 # Supabase (PostgreSQL client)
-supabase==1.0.3
+supabase==2.0.3
+
+# httpx is removed - it's a transitive dependency of supabase

@@ -1,0 +1,41 @@
+# ═══════════════════════════════════════
+# Acadexa Backend V2 — Dependencies
+# ═══════════════════════════════════════
+
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+
+# Data validation
+pydantic==2.9.0
+pydantic-settings==2.5.0
+
+# File upload
+python-multipart==0.0.9
+
+# Excel parsing
+openpyxl==3.1.5
+
+# Async file I/O
+aiofiles==24.1.0
+
+# Environment
+python-dotenv==1.0.1
+
+# JSON logging
+python-json-logger==2.0.7
+
+# Supabase (PostgreSQL)
+supabase==2.7.0
+
+# Background tasks
+apscheduler==3.10.4
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Testing
+pytest==8.3.0
+pytest-asyncio==0.24.0
+httpx==0.27.0

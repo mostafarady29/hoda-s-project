@@ -354,7 +354,7 @@ class ExcelParser:
                 
                 for course in semester.get("courses", []):
                     grade_points = self._calculate_grade_points(course.get("grade_letter", ""))
-                    passed = course.get("passed", "نعم") == "نعم"
+                    passed = course.get("passed", "نعم") in ["نعم", "√", "ناجح", True]
                     
                     supabase.table("student_courses").insert({
                         "student_id": student_db_id,

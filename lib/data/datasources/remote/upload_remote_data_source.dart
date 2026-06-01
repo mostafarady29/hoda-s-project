@@ -22,7 +22,7 @@ class UploadRemoteDataSourceImpl implements UploadRemoteDataSource {
   Future<UploadResponseModel> uploadExcel(File file, String department) async {
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(file.path),
-      'department': department,
+      'department_code': department,
     });
     return _upload(formData);
   }
@@ -35,7 +35,7 @@ class UploadRemoteDataSourceImpl implements UploadRemoteDataSource {
         bytes,
         filename: 'academic_record.xlsx',
       ),
-      'department': department,
+      'department_code': department,
     });
     return _upload(formData);
   }

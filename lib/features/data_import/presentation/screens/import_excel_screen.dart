@@ -1,7 +1,5 @@
 // lib/features/data_import/presentation/screens/import_excel_screen.dart
 
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -33,7 +31,7 @@ class ImportExcelScreen extends StatefulWidget {
 
 class _ImportExcelScreenState extends State<ImportExcelScreen>
     with SingleTickerProviderStateMixin {
-  File? _pickedFile;
+  PlatformFile? _pickedFile;
   String? _selectedDeptId;
   String? _errorMessage;
 
@@ -71,11 +69,8 @@ class _ImportExcelScreenState extends State<ImportExcelScreen>
         allowMultiple: false,
       );
       if (result == null || result.files.isEmpty) return;
-      final path = result.files.single.path;
-      if (path == null) return;
-      final file = File(path);
-      final sizeBytes = await file.length();
-      if (sizeBytes > 50 * 1024 * 1024) {
+      final file = result.files.single;
+      if (file.size > 50 * 1024 * 1024) {
         setState(() => _errorMessage = 'حجم الملف يتجاوز الحد الأقصى (50 MB)');
         return;
       }
@@ -95,7 +90,7 @@ class _ImportExcelScreenState extends State<ImportExcelScreen>
       return;
     }
     setState(() => _errorMessage = null);
-    context.read<UploadCubit>().upload(_pickedFile!, _selectedDeptId!);
+    context.read<UploadCubit>().uploadPlatformFile(_pickedFile!, _selectedDeptId!);
   }
 
   @override
@@ -429,7 +424,7 @@ class _StepLabel extends StatelessWidget {
 }
 
 class _FilePickerCard extends StatelessWidget {
-  final File? pickedFile;
+  final PlatformFile? pickedFile;
   final VoidCallback? onTap;
   final bool isDark;
 
@@ -442,7 +437,7 @@ class _FilePickerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasFile = pickedFile != null;
-    final fileName = pickedFile?.path.split(Platform.pathSeparator).last ?? '';
+    final fileName = pickedFile?.name ?? '';
 
     return GestureDetector(
       onTap: onTap,

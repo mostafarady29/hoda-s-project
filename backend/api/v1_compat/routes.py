@@ -269,12 +269,16 @@ async def get_student_full(student_id: str):
         courses = client.table("student_courses").select("*").eq("semester_id", sem["id"]).execute()
         sem["courses"] = courses.data or []
 
-    analysis = client.table("analysis_results").select("*").eq("student_id", student_id).eq("is_latest", True).execute()
+    try:
+        analysis = client.table("analysis_results").select("*").eq("student_id", student_id).eq("is_latest", True).execute()
+        latest_analysis = analysis.data[0] if analysis.data else None
+    except Exception:
+        latest_analysis = None
 
     return {
         "student": student.data[0],
         "semesters": semesters.data or [],
-        "latest_analysis": analysis.data[0] if analysis.data else None,
+        "latest_analysis": latest_analysis,
     }
 
 

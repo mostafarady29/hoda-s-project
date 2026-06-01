@@ -152,6 +152,37 @@ class UploadCubit extends Cubit<UploadState> {
     }
   }
 
+  // ── Cross-platform upload using PlatformFile
+  Future<void> uploadPlatformFile(PlatformFile pickedFile, String department) async {
+    if (state is UploadInProgress || state is UploadPolling) return;
+
+    emit(const UploadInProgress());
+
+    try {
+      String jobId;
+      if (kIsWeb) {
+        if (pickedFile.bytes == null) {
+          emit(const UploadFailure(message: 'فشل قراءة الملف على المتصفح'));
+          return;
+        }
+        jobId = await _uploadExcel.fromBytes(pickedFile.bytes!, department);
+      } else {
+        if (pickedFile.path == null) {
+          emit(const UploadFailure(message: 'فشل قراءة مسار الملف'));
+          return;
+        }
+        final file = File(pickedFile.path!);
+        jobId = await _uploadExcel(file, department);
+      }
+
+      _currentJobId = jobId;
+      _startTime = DateTime.now();
+      _startPolling(jobId);
+    } catch (e) {
+      emit(UploadFailure(message: e.toString()));
+    }
+  }
+
   // ── Polling loop via Timer
   void _startPolling(String jobId) {
     _pollTimer?.cancel();
